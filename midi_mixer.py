@@ -532,6 +532,11 @@ def main():
 
             if message.type == "note_on" and message.velocity > 0:
                 handle_button(message.note, midi_out)
+
+                # Le X-Touch traite ensuite le relâchement et peut éteindre
+                # sa propre LED. On renvoie donc l'état réel après ce relâchement.
+                time.sleep(0.12)
+                sync_button_leds(midi_out)
                 continue
 
             if message.type != "control_change":
