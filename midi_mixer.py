@@ -6,13 +6,26 @@ import time
 
 import mido
 
+
+# =============================================================================
+# CONFIGURATION
+# =============================================================================
+
 MIDI_PORT_MATCH = "X-TOUCH MINI"
 
+# Global MIDI Channel configured in X-Touch Editor.
+# IMPORTANT: Mido uses 0-15, while X-Touch Editor displays channels 1-16.
+# Example: "Global CH 1" in X-Touch Editor = 0 here.
+LED_CHANNEL = 10
+
+# Output names from: pactl list short sinks
 OUTPUTS = {
     "casque": "alsa_output.usb-Logitech_PRO_X_000000000000-00.analog-stereo",
-    "enceintes": "alsa_output.pci-0000_12_00.6.analog-stereo"
+    "enceintes": "alsa_output.pci-0000_12_00.6.analog-stereo",
 }
 
+# Button NOTE numbers.
+# Notes 0-15 have controllable LEDs on a standard X-Touch Mini.
 BUTTONS = {
     8: {"label": "Spotify", "action": "mute_app", "match": ["spotify"]},
     9: {"label": "Discord", "action": "mute_app", "match": ["discord"]},
@@ -21,59 +34,96 @@ BUTTONS = {
     12: {"label": "VLC", "action": "mute_app", "match": ["vlc"]},
     14: {"label": "Fenêtre active", "action": "mute_active_window"},
     15: {"label": "Général", "action": "mute_default_sink"},
-    16: {"label": "Switch casque / enceintes", "action": "toggle_output"}
+
+    # If this button sends note 16, it can switch outputs,
+    # but it does NOT have a controllable LED in Standard mode.
+    16: {"label": "Switch casque / enceintes", "action": "toggle_output"},
 }
 
-# Adapte les CC après le test `python midi_mixer.py --list-midi`.
-# Les noms ci-dessous doivent correspondre à `application.name` ou
-# `application.process.binary` vus dans ta sortie pw-dump.
+# Knobs / fader CC numbers.
 MAPPINGS = {
     1: {"label": "Spotify", "match": ["spotify"]},
-    2: {"label": "Discord", "match": ["discord", "Discord"]},
-    3: {"label": "Firefox", "match": ["firefox", "Firefox"]},
-    4: {"label": "Steam / jeu", "match": ["steam", "Steam"]},
-    5: {"label": "VLC", "match": ["vlc", "VLC"]},
+    2: {"label": "Discord", "match": ["discord"]},
+    3: {"label": "Firefox", "match": ["firefox"]},
+    4: {"label": "Steam / jeu", "match": ["steam"]},
+    5: {"label": "VLC", "match": ["vlc"]},
     7: {"label": "Fenêtre active", "active_window": True},
     8: {"label": "Volume général", "default_sink": True},
     9: {"label": "Fenêtre active (fader)", "active_window": True},
 }
 
-MAX_VOLUME = 1.0       # 1.0 = 100 %, mets 1.5 pour autoriser 150 %
-MIN_DELTA = 1          # Ignore les micro-variations de certains contrôleurs
+MAX_VOLUME = 1.0
+MIN_DELTA = 1
 
+LED_OFF = 0
+LED_ON = 1
+LED_BLINK = 2
+
+
+# =============================================================================
+# GENERIC HELPERS
+# =============================================================================
 
 def run(*args):
+    """Run a command and return its stdout, without printing command errors."""
     return subprocess.run(
-        args, text=True, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL
+        args,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        check=False,
     ).stdout.strip()
 
 
+def command(*args):
+    """Run a command silently."""
+    subprocess.run(
+        args,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    )
+
+
+# =============================================================================
+# PIPEWIRE / WINDOW DETECTION
+# =============================================================================
+
 def get_nodes():
-    raw = run("pw-dump")
+    """Return currently active PipeWire application audio streams."""
     try:
-        data = json.loads(raw)
+        data = json.loads(run("pw-dump"))
     except json.JSONDecodeError:
         return []
 
     nodes = []
+
     for item in data:
         if item.get("type") != "PipeWire:Interface:Node":
             continue
+
         props = item.get("info", {}).get("props", {})
+
         if props.get("media.class") != "Stream/Output/Audio":
             continue
-        nodes.append({
-            "id": str(item["id"]),
-            "app": props.get("application.name", ""),
-            "binary": props.get("application.process.binary", ""),
-            "pid": str(props.get("application.process.id", "")),
-            "node": props.get("node.name", ""),
-        })
+
+        nodes.append(
+            {
+                "id": str(item["id"]),
+                "app": props.get("application.name", ""),
+                "binary": props.get("application.process.binary", ""),
+                "pid": str(props.get("application.process.id", "")),
+                "node": props.get("node.name", ""),
+            }
+        )
+
     return nodes
 
 
 def active_window_info():
+    """Get PID, class and title of the focused KDE window."""
     window_id = run("kdotool", "getactivewindow")
+
     if not window_id:
         return {"pid": "", "class": "", "name": ""}
 
@@ -85,63 +135,109 @@ def active_window_info():
 
 
 def find_nodes(mapping):
+    """Find PipeWire streams corresponding to a configured mapping."""
     nodes = get_nodes()
 
     if mapping.get("active_window"):
         window = active_window_info()
 
-        # Cas idéal : PID exact de la fenêtre et du flux PipeWire.
-        by_pid = [n for n in nodes if n["pid"] == window["pid"]]
-        if by_pid:
-            return by_pid
+        # Best case: the PipeWire stream has the same PID as the focused window.
+        pid_matches = [node for node in nodes if node["pid"] == window["pid"]]
 
-        # Repli nécessaire pour les applis dont le flux audio est produit
-        # par un processus enfant (Spotify, navigateurs, jeux/Proton...).
-        terms = {
+        if pid_matches:
+            return pid_matches
+
+        # Fallback for Spotify, browsers, Proton games, etc.
+        search_terms = {
             value.lower()
             for value in (window["class"], window["name"])
             if value
         }
 
         return [
-            n for n in nodes
+            node
+            for node in nodes
             if any(
-                term in value.lower() or value.lower() in term
-                for term in terms
-                for value in (n["app"], n["binary"], n["node"])
-                if value
+                term in candidate.lower() or candidate.lower() in term
+                for term in search_terms
+                for candidate in (node["app"], node["binary"], node["node"])
+                if candidate
             )
         ]
 
-    matches = [m.lower() for m in mapping["match"]]
+    matches = [value.lower() for value in mapping.get("match", [])]
+
     return [
-        n for n in nodes
+        node
+        for node in nodes
         if any(
-            match in value.lower()
+            match in candidate.lower()
             for match in matches
-            for value in (n["app"], n["binary"], n["node"])
-            if value
+            for candidate in (node["app"], node["binary"], node["node"])
+            if candidate
         )
     ]
 
-def show_volume_osd(percent, label="Volume"):
+def node_is_muted(node_id):
+    """
+    Retourne True si le flux PipeWire est actuellement muted.
+    Exemple de sortie : 'Volume: 0.65 [MUTED]'
+    """
+    return "[MUTED]" in run("wpctl", "get-volume", str(node_id))
+
+
+def target_is_muted(target):
+    """Read mute state for @DEFAULT_SINK@ or @DEFAULT_SOURCE@."""
+    return "[MUTED]" in run("wpctl", "get-volume", target)
+
+
+# =============================================================================
+# KDE OSD
+# =============================================================================
+
+def show_text_osd(text, icon="audio-volume-high"):
+    """Show KDE Plasma text OSD."""
+    command(
+        "qdbus6",
+        "org.kde.plasmashell",
+        "/org/kde/osdService",
+        "org.kde.osdService.showText",
+        icon,
+        text,
+    )
+
+
+def show_volume_osd(percent, label):
     volume = round(percent * 100)
 
-    show_text_osd(
-        f"{label} : {volume} %",
-        "audio-volume-high" if volume > 0 else "audio-volume-muted",
-    )
+    icon = "audio-volume-muted" if volume == 0 else "audio-volume-high"
+
+    show_text_osd(f"{label} : {volume} %", icon)
+
+
+# =============================================================================
+# VOLUME
+# =============================================================================
 
 def set_volume(node_id, value):
-    subprocess.run(
-        ["wpctl", "set-volume", "-l", str(MAX_VOLUME), node_id, f"{value:.3f}"],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
+    command(
+        "wpctl",
+        "set-volume",
+        "-l",
+        str(MAX_VOLUME),
+        node_id,
+        f"{value:.3f}",
     )
 
 
-def handle(cc, value):
-    # Force les positions proches des butées à être des valeurs exactes.
+def handle_volume(cc, value):
+    """Handle knobs and fader."""
+    mapping = MAPPINGS.get(cc)
+
+    if not mapping:
+        return
+
+    # Snap near MIDI endpoints to exact values.
     if value >= 126:
         percent = MAX_VOLUME
     elif value <= 1:
@@ -149,19 +245,17 @@ def handle(cc, value):
     else:
         percent = value / 127 * MAX_VOLUME
 
-    mapping = MAPPINGS.get(cc)
-    if not mapping:
-        return
-
     if mapping.get("default_sink"):
         set_volume("@DEFAULT_SINK@", percent)
+
         show_volume_osd(percent, "Volume général")
-        print(f"{mapping['label']}: {round(percent * 100)} %")
+        print(f"Volume général : {round(percent * 100)} %")
         return
 
     nodes = find_nodes(mapping)
+
     if not nodes:
-        print(f"{mapping['label']}: aucun flux audio trouvé")
+        print(f"{mapping['label']} : aucun flux audio trouvé")
         return
 
     for node in nodes:
@@ -174,17 +268,28 @@ def handle(cc, value):
         label = window["name"] or window["class"] or "Fenêtre active"
 
     show_volume_osd(percent, label)
-    print(f"{label}: {round(percent * 100)} % ({len(nodes)} flux)")
+    print(f"{label} : {round(percent * 100)} % ({len(nodes)} flux)")
+
+
+# =============================================================================
+# AUDIO OUTPUT SWITCHING
+# =============================================================================
 
 def current_default_sink():
-    info = run("pactl", "info")
-    for line in info.splitlines():
+    """Return the PipeWire-Pulse default sink name."""
+    for line in run("pactl", "info").splitlines():
         if line.startswith("Default Sink:"):
             return line.split(":", 1)[1].strip()
+
     return ""
 
 
+def speakers_are_selected():
+    return current_default_sink() == OUTPUTS["enceintes"]
+
+
 def toggle_output():
+    """Switch between headphones and speakers; move active audio streams."""
     current = current_default_sink()
 
     if current == OUTPUTS["casque"]:
@@ -194,109 +299,169 @@ def toggle_output():
         target = OUTPUTS["casque"]
         label = "Casque"
 
-    # Sortie par défaut pour les nouveaux flux.
-    subprocess.run(
-        ["pactl", "set-default-sink", target],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        check=False,
-    )
+    command("pactl", "set-default-sink", target)
 
-    # Déplace immédiatement Spotify, Firefox, Discord, VLC, jeux, etc.
-    # qui jouent déjà du son.
-    streams = run("pactl", "list", "short", "sink-inputs")
-    for line in streams.splitlines():
-        stream_id = line.split()[0]
-        subprocess.run(
-            ["pactl", "move-sink-input", stream_id, target],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            check=False,
-        )
+    # Move streams already playing.
+    for line in run("pactl", "list", "short", "sink-inputs").splitlines():
+        parts = line.split()
 
+        if parts:
+            command("pactl", "move-sink-input", parts[0], target)
+
+    show_text_osd(f"Sortie active : {label}", "audio-headphones")
     print(f"Sortie active : {label}")
 
-def show_text_osd(text, icon="audio-volume-muted"):
-    subprocess.run(
-        [
-            "qdbus6",
-            "org.kde.plasmashell",
-            "/org/kde/osdService",
-            "org.kde.osdService.showText",
-            icon,
-            text,
-        ],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        check=False,
+    # Do not re-read pactl here: it may update asynchronously.
+    return target == OUTPUTS["enceintes"]
+
+
+# =============================================================================
+# X-TOUCH MINI BUTTON LEDS
+# =============================================================================
+
+def set_button_led(midi_out, note, state):
+    """
+    Set an X-Touch Mini button LED.
+
+    state:
+      LED_OFF   = 0
+      LED_ON    = 1
+      LED_BLINK = 2
+
+    Notes 0-15 only are supported by the X-Touch Mini LED protocol.
+    """
+    if not 0 <= note <= 15:
+        print(
+            f"LED ignorée : note {note} hors plage. "
+            "Les LED de boutons X-Touch Mini utilisent uniquement les notes 0 à 15."
+        )
+        return
+
+    midi_out.send(
+        mido.Message(
+            "note_on",
+            channel=LED_CHANNEL,
+            note=note,
+            velocity=state,
+        )
     )
 
-def node_is_muted(node_id):
-    raw = run("pw-dump")
-    try:
-        data = json.loads(raw)
-    except json.JSONDecodeError:
-        return False
 
-    for item in data:
-        if str(item.get("id")) != str(node_id):
+def button_label(button):
+    """Return a dynamic label for the active-window button."""
+    if button["action"] == "mute_active_window":
+        window = active_window_info()
+        return window["name"] or window["class"] or "Fenêtre active"
+
+    return button["label"]
+
+
+def update_button_led_for_mute(midi_out, note, muted):
+    """LED on means the associated target is muted."""
+    set_button_led(midi_out, note, LED_ON if muted else LED_OFF)
+
+
+def sync_button_leds(midi_out):
+    """
+    Synchronise les LED de mute au démarrage.
+    LED allumée = cible mutée.
+    LED éteinte = cible non mutée ou application sans flux audio.
+    """
+    for note, button in BUTTONS.items():
+        action = button["action"]
+
+        # Le switch audio est note 16 : aucune LED gérée.
+        if action == "toggle_output":
             continue
 
-        props_list = item.get("info", {}).get("params", {}).get("Props", [])
-        for props in props_list:
-            if "mute" in props:
-                return bool(props["mute"])
+        if action == "mute_default_sink":
+            muted = node_is_muted("@DEFAULT_SINK@")
 
-    return False
+        elif action == "mute_default_source":
+            muted = node_is_muted("@DEFAULT_SOURCE@")
 
-def handle_button(note):
+        elif action == "mute_active_window":
+            nodes = find_nodes({"active_window": True})
+            muted = bool(nodes) and all(
+                node_is_muted(node["id"]) for node in nodes
+            )
+
+        else:
+            nodes = find_nodes(button)
+            muted = bool(nodes) and all(
+                node_is_muted(node["id"]) for node in nodes
+            )
+
+        set_button_led(midi_out, note, LED_ON if muted else LED_OFF)
+
+
+def test_button_leds(midi_out):
+    """Briefly turn each configured LED on, then off."""
+    print("Test des LED...")
+
+    for note in BUTTONS:
+        if 0 <= note <= 15:
+            print(f"Test LED note {note}")
+            set_button_led(midi_out, note, LED_ON)
+            time.sleep(0.5)
+            set_button_led(midi_out, note, LED_OFF)
+
+    print("Test terminé.")
+
+
+# =============================================================================
+# BUTTON ACTIONS
+# =============================================================================
+
+def handle_button(note, midi_out):
     button = BUTTONS.get(note)
+
     if not button:
         return
 
     action = button["action"]
 
-    if action == "mute_default_sink":
-        subprocess.run(["wpctl", "set-mute", "@DEFAULT_SINK@", "toggle"])
-        print("Mute général basculé")
-        return
-
-    if action == "mute_default_source":
-        subprocess.run(["wpctl", "set-mute", "@DEFAULT_SOURCE@", "toggle"])
-        print("Mute micro basculé")
-        return
-
     if action == "toggle_output":
         toggle_output()
         return
 
-    if action == "mute_active_window":
-        nodes = find_nodes({"active_window": True})
-    else:
-        nodes = find_nodes(button)
+    # Master mute.
+    if action == "mute_default_sink":
+        command("wpctl", "set-mute", "@DEFAULT_SINK@", "toggle")
+        time.sleep(0.08)
 
-    if not nodes:
-        print(f"{button['label']}: aucun flux trouvé")
-        return
-
-    for node in nodes:
-        subprocess.run(
-            ["wpctl", "set-mute", node["id"], "toggle"],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            check=False,
-        )
-
-    # Laisse à PipeWire quelques millisecondes pour publier le nouvel état.
-    time.sleep(0.05)
-
-    muted = all(node_is_muted(node["id"]) for node in nodes)
-
-    if button.get("action") == "mute_active_window":
-        window = active_window_info()
-        label = window["name"] or window["class"] or "Fenêtre active"
-    else:
+        muted = target_is_muted("@DEFAULT_SINK@")
         label = button["label"]
+
+    # Microphone mute.
+    elif action == "mute_default_source":
+        command("wpctl", "set-mute", "@DEFAULT_SOURCE@", "toggle")
+        time.sleep(0.08)
+
+        muted = target_is_muted("@DEFAULT_SOURCE@")
+        label = button["label"]
+
+    # Application mute or active-window mute.
+    else:
+        if action == "mute_active_window":
+            nodes = find_nodes({"active_window": True})
+        else:
+            nodes = find_nodes(button)
+
+        if not nodes:
+            print(f"{button['label']} : aucun flux audio trouvé")
+            return
+
+        for node in nodes:
+            command("wpctl", "set-mute", node["id"], "toggle")
+
+        # Give PipeWire time to publish its new mute state.
+        time.sleep(0.08)
+
+        muted = all(node_is_muted(node["id"]) for node in nodes)
+        label = button_label(button)
+
+    update_button_led_for_mute(midi_out, note, muted)
 
     state = "Mute" if muted else "Unmute"
     icon = "audio-volume-muted" if muted else "audio-volume-high"
@@ -304,35 +469,81 @@ def handle_button(note):
     show_text_osd(f"{label} : {state}", icon)
     print(f"{label} : {state}")
 
+
+# =============================================================================
+# MIDI
+# =============================================================================
+
+def matching_port(ports):
+    return next(
+        (
+            port
+            for port in ports
+            if MIDI_PORT_MATCH.lower() in port.lower()
+        ),
+        None,
+    )
+
+
 def main():
+    input_ports = mido.get_input_names()
+    output_ports = mido.get_output_names()
+
     if "--list-midi" in sys.argv:
-        for port in mido.get_input_names():
-            print(port)
+        print("Ports MIDI en entrée :")
+        print("\n".join(input_ports) or "(aucun)")
+
+        print("\nPorts MIDI en sortie :")
+        print("\n".join(output_ports) or "(aucun)")
         return
 
-    ports = mido.get_input_names()
-    port = next((p for p in ports if MIDI_PORT_MATCH.lower() in p.lower()), None)
-    if not port:
-        print("X-TOUCH MINI introuvable. Ports MIDI disponibles :")
-        print("\n".join(ports))
+    input_port = matching_port(input_ports)
+    output_port = matching_port(output_ports)
+
+    if not input_port or not output_port:
+        print("Port MIDI d'entrée ou de sortie introuvable.")
+
+        print("\nEntrées disponibles :")
+        print("\n".join(input_ports) or "(aucune)")
+
+        print("\nSorties disponibles :")
+        print("\n".join(output_ports) or "(aucune)")
+
         sys.exit(1)
 
-    print(f"Écoute MIDI : {port}")
-    print("Tourne un knob ou le fader ; Ctrl+C pour arrêter.")
+    print(f"Écoute MIDI : {input_port}")
+    print(f"Retour MIDI / LED : {output_port}")
 
     last_values = {}
-    with mido.open_input(port) as midi:
+
+    with mido.open_input(input_port) as midi, mido.open_output(output_port) as midi_out:
+        if "--test-leds" in sys.argv:
+            test_button_leds(midi_out)
+            return
+
+        # At launch, restore LED state from actual PipeWire state.
+        sync_button_leds(midi_out)
+
+        print("Tourne un knob, bouge le fader ou appuie sur un bouton. Ctrl+C pour arrêter.")
+
         for message in midi:
+            # Uncomment this line temporarily if you need to identify MIDI values.
+            # print(message)
+
             if message.type == "note_on" and message.velocity > 0:
-                handle_button(message.note)
+                handle_button(message.note, midi_out)
                 continue
+
             if message.type != "control_change":
                 continue
+
             previous = last_values.get(message.control)
+
             if previous is not None and abs(message.value - previous) < MIN_DELTA:
                 continue
+
             last_values[message.control] = message.value
-            handle(message.control, message.value)
+            handle_volume(message.control, message.value)
 
 
 if __name__ == "__main__":
