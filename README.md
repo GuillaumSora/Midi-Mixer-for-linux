@@ -1,143 +1,151 @@
-## X-Touch Mini button LEDs
+# MIDI Mixer for Linux — X-Touch Mini
 
-The script can keep X-Touch Mini button LEDs synchronized with mute state:
+`midi_mixer.py` connects a Behringer X-Touch Mini to PipeWire/WirePlumber and KDE Plasma. It provides per-application volume and mute controls, master volume, output switching, and Spotify media controls.
 
-- LED **on**: the associated application or master output is muted
-- LED **off**: the associated target is not muted
-- The audio-output switch does not use an LED in this project
+## Requirements
 
-### Important limitations
-
-In Standard mode, the X-Touch Mini only exposes controllable button LEDs for MIDI notes `0` to `15`:
-
-| Physical row | LED-controllable notes |
-|---|---|
-| Top row, buttons 1–8 | `0` to `7` |
-| Bottom row, buttons 9–16 | `8` to `15` |
-
-If a button is configured with note `16` or above, it can still trigger an action in the script, but its LED cannot be controlled through the standard X-Touch Mini LED protocol.
-
-The Layer A and Layer B LEDs are also not assignable.
-
-### Configure the Global MIDI channel
-
-Button LEDs receive MIDI feedback on the **Global MIDI Channel** configured in X-Touch Editor.
-
-In `midi_mixer.py`, configure:
-
-```python
-LED_CHANNEL = 0
+```bash
+sudo pacman -S python-mido playerctl pipewire wireplumber pipewire-pulse
 ```
 
-Mido uses channels from `0` to `15`, while X-Touch Editor shows them as `1` to `16`.
+The script also uses `wpctl`, `pactl`, `pw-dump`, `qdbus6`, and `kdotool`. `playerctl` is required for Spotify commands through MPRIS. Verify that Spotify is available:
 
-| X-Touch Editor Global CH | `LED_CHANNEL` in Python |
+```bash
+playerctl --list-all
+```
+
+The output should contain `spotify`. [web:34][web:43]
+
+## X-Touch Editor
+
+Use the controller in **Standard mode**. Knobs and fader must send `control_change` messages; buttons must send `note_on` messages.
+
+Configure **mute** buttons as **Toggle**, not Momentary. Spotify transport buttons can be regular buttons because their LED state is not managed by the script.
+
+### LED channel
+
+In the script, `LED_CHANNEL` uses values from 0 to 15, while X-Touch Editor shows channels 1 to 16.
+
+| X-Touch Editor Global CH | `LED_CHANNEL` |
 |---:|---:|
-| 1 | `0` |
-| 2 | `1` |
-| 11 | `10` |
-| 16 | `15` |
+| 1 | 0 |
+| 11 | 10 |
+| 16 | 15 |
 
-For example, if X-Touch Editor shows **Global CH 11**, use:
+In Standard mode, only MIDI notes `0` through `15` have controllable button LEDs. A note `16` or higher can still trigger an action, but its LED cannot be controlled.
 
-```python
-LED_CHANNEL = 10
-```
+## Configuration
 
-### Configure buttons as Toggle
-
-In **X-Touch Editor**, configure the mute buttons as **Toggle**, not Momentary.
-
-- **Momentary** buttons may turn their LED off when the physical button is released
-- **Toggle** buttons preserve their state between presses and work correctly with MIDI LED feedback
-
-Apply this setting to every button assigned to:
-
-- Application mute
-- Focused-window mute
-- Master mute
-- Microphone mute
-
-### Test LEDs
-
-Stop the user service first:
-
-```bash
-systemctl --user stop midi-mixer.service
-```
-
-Then run:
-
-```bash
-python midi_mixer.py --test-leds
-```
-
-Each configured button LED with a note from `0` to `15` should briefly turn on, then off.
-
-If no LED reacts:
-
-1. Check that the controller is in **Standard mode**, not MC mode
-2. Check that `LED_CHANNEL` matches the Global MIDI Channel in X-Touch Editor
-3. Try another `LED_CHANNEL` value if the Global Channel is unknown
-4. Make sure the button note is between `0` and `15`
-
-Start the script normally after a successful test:
-
-```bash
-python midi_mixer.py
-```
-
-## Mute / unmute
-
-Available button actions:
-
-| Action | Effect | LED behavior |
-|---|---|---|
-| `mute_default_sink` | Mute or unmute the master output | On when master output is muted |
-| `mute_default_source` | Mute or unmute the default microphone | On when microphone is muted |
-| `mute_app` | Mute or unmute configured application streams | On when the application is muted |
-| `mute_active_window` | Mute or unmute the focused application's stream | On when the focused target is muted |
-| `toggle_output` | Switch between headphones and speakers | No LED feedback |
-
-Example:
+At minimum, adapt `OUTPUTS`, `LED_CHANNEL`, `BUTTONS` note numbers, and `MAPPINGS` CC values to match your X-Touch Editor configuration.
 
 ```python
+SPOTIFY_MATCH = ["spotify", "spotify-launcher"]
+
 BUTTONS = {
-    8: {"label": "Spotify", "action": "mute_app", "match": ["spotify"]},
+    # Pick unused note numbers in X-Touch Editor.
+    0: {"label": "Spotify previous", "action": "spotify_previous"},
+    1: {"label": "Spotify play / pause", "action": "spotify_play_pause"},
+    2: {"label": "Spotify next", "action": "spotify_next"},
+
+    8: {"label": "Spotify", "action": "mute_app", "match": SPOTIFY_MATCH},
     9: {"label": "Discord", "action": "mute_app", "match": ["discord"]},
     10: {"label": "Firefox", "action": "mute_app", "match": ["firefox"]},
-    14: {"label": "Focused window", "action": "mute_active_window"},
+    11: {"label": "Steam", "action": "mute_app", "match": ["steam"]},
+    12: {"label": "VLC", "action": "mute_app", "match": ["vlc"]},
+    14: {"label": "Active window", "action": "mute_active_window"},
     15: {"label": "Master", "action": "mute_default_sink"},
     16: {"label": "Headphones / speakers", "action": "toggle_output"},
 }
+
+MAPPINGS = {
+    1: {"label": "Spotify", "match": SPOTIFY_MATCH},
+    2: {"label": "Discord", "match": ["discord"]},
+    3: {"label": "Firefox", "match": ["firefox"]},
+    4: {"label": "Steam / game", "match": ["steam"]},
+    5: {"label": "VLC", "match": ["vlc"]},
+    7: {"label": "Active window", "active_window": True},
+    8: {"label": "Master volume", "default_sink": True},
+    9: {"label": "Active window (fader)", "active_window": True},
+}
 ```
 
-The script synchronizes mute LEDs when it starts. It also updates the matching LED after every mute or unmute action.
+`SPOTIFY_MATCH` supports both the Spotify client and `spotify-launcher`. The script searches `application.name`, `application.process.binary`, `node.name`, and `media.name` to identify PipeWire streams.
 
-For focused-window mute, KDE OSD displays the title of the focused window and the final state:
+## Button actions
+
+| Action | Effect | LED |
+|---|---|---|
+| `mute_app` | Mutes/unmutes all matching application streams | On while muted |
+| `mute_active_window` | Mutes/unmutes the focused KDE window stream | On while muted |
+| `mute_default_sink` | Mutes/unmutes the default audio output | On while muted |
+| `mute_default_source` | Mutes/unmutes the default microphone | On while muted |
+| `toggle_output` | Switches between headphones and speakers, moving current streams | Not managed |
+| `spotify_previous` | Previous Spotify track (`playerctl --player=spotify previous`) | Not managed |
+| `spotify_play_pause` | Spotify play/pause (`playerctl --player=spotify play-pause`) | Not managed |
+| `spotify_next` | Next Spotify track (`playerctl --player=spotify next`) | Not managed |
+
+MPRIS commands explicitly target Spotify, preventing another active media player from being controlled instead. [web:35][web:43]
+
+### Spotify transport LEDs
+
+In `sync_button_leds()`, place this block immediately after:
+
+```python
+action = button["action"]
+```
+
+```python
+if action in {
+    "toggle_output",
+    "spotify_previous",
+    "spotify_play_pause",
+    "spotify_next",
+}:
+    continue
+```
+
+Those actions are not mute actions, so they must not enter the LED synchronization logic.
+
+## Spotify volume persistence
+
+Spotify may reset its stream volume to 100% when switching tracks. The script remembers the last volume sent by each application knob and uses an independent monitoring thread.
+
+```python
+APP_VOLUME_SYNC_INTERVAL = 0.5
+NODE_VOLUME_EPSILON = 0.005
+```
+
+Every 0.5 seconds, the worker reads the actual stream volume with `wpctl get-volume` and reapplies the target volume if it differs. It works even when no new MIDI message arrives. A brief volume jump may still occur because the script corrects Spotify after the change happens. WirePlumber can persist stream properties in `~/.local/state/wireplumber/stream-properties`. [web:20][web:26]
+
+## Running and debugging
+
+```bash
+# List MIDI ports
+python midi_mixer.py --list-midi
+
+# Normal start
+python midi_mixer.py
+
+# LED test (stop the service first)
+systemctl --user stop midi-mixer.service
+python midi_mixer.py --test-leds
+
+# Show detected PipeWire streams
+python midi_mixer.py --debug-matching
+
+# Show streams and detailed volume synchronization
+python midi_mixer.py --debug-matching --debug-sync
+```
+
+Useful debug output looks like:
 
 ```text
-Spotify : Mute
-Spotify : Unmute
+[debug] set-volume node=103 label=Spotify target=0.480 current=1.0
 ```
 
 ## systemd user service
 
-A systemd user service starts the mixer automatically after login.
-
-Create the unit directory:
-
-```bash
-mkdir -p ~/.config/systemd/user
-```
-
-Create the service:
-
-```bash
-nano ~/.config/systemd/user/midi-mixer.service
-```
-
-Paste the following configuration:
+Create `~/.config/systemd/user/midi-mixer.service`:
 
 ```ini
 [Unit]
@@ -160,43 +168,18 @@ StandardError=journal
 WantedBy=default.target
 ```
 
-> Update both paths if the repository is not stored in `~/Projets/Midi-Mixer-for-linux`.
-
-`Restart=on-failure` restarts the script only if it crashes or exits with an error. This is preferable to `Restart=always` here because the mixer is a persistent process and unnecessary restarts can reset MIDI controller feedback. [web:478][web:459]
-
-Reload systemd, enable the service, and start it:
+Update both paths if the repository is stored somewhere else, then enable the service:
 
 ```bash
 systemctl --user daemon-reload
 systemctl --user enable --now midi-mixer.service
 ```
 
-Check that it is running:
+Useful commands:
 
 ```bash
 systemctl --user is-active midi-mixer.service
-```
-
-Expected result:
-
-```text
-active
-```
-
-Read recent logs without following them continuously:
-
-```bash
-journalctl --user -u midi-mixer.service -n 100 --no-pager
-```
-
-Restart the service after changing the Python script:
-
-```bash
 systemctl --user restart midi-mixer.service
-```
-
-Stop it temporarily, for example before using `--test-leds`:
-
-```bash
-systemctl --user stop midi-mixer.service
+journalctl --user -u midi-mixer.service -n 100 --no-pager
+journalctl --user -u midi-mixer.service -f
 ```
