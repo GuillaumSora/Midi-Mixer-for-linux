@@ -23,6 +23,15 @@ LED_CHANNEL = 10
 OUTPUTS = {
     "casque": "alsa_output.usb-Logitech_PRO_X_000000000000-00.analog-stereo",
     "enceintes": "alsa_output.pci-0000_12_00.6.analog-stereo",
+    "dac": "alsa_output.usb-FIIO_JadeAudio_JA11-00.analog-stereo",
+}
+
+OUTPUT_ORDER = ["casque", "enceintes", "dac"]
+
+OUTPUT_LABELS = {
+    "casque": "Casque",
+    "enceintes": "Enceintes",
+    "dac": "DAC",
 }
 
 SPOTIFY_MATCH = ["spotify", "spotify-launcher"]
@@ -76,6 +85,7 @@ STOP_EVENT = threading.Event()
 # GENERIC HELPERS
 # =============================================================================
 
+
 def run(*args):
     """Run a command and return its stdout, without printing command errors."""
     return subprocess.run(
@@ -85,7 +95,6 @@ def run(*args):
         stderr=subprocess.DEVNULL,
         check=False,
     ).stdout.strip()
-
 
 
 def command(*args):
@@ -98,7 +107,6 @@ def command(*args):
     )
 
 
-
 def debug(message):
     if DEBUG_MATCHING:
         print(f"[debug] {message}")
@@ -107,6 +115,7 @@ def debug(message):
 # =============================================================================
 # PIPEWIRE / WINDOW DETECTION
 # =============================================================================
+
 
 def get_nodes():
     """Return currently active PipeWire application audio streams."""
@@ -140,7 +149,6 @@ def get_nodes():
     return nodes
 
 
-
 def active_window_info():
     """Get PID, class and title of the focused KDE window."""
     window_id = run("kdotool", "getactivewindow")
@@ -155,7 +163,6 @@ def active_window_info():
     }
 
 
-
 def debug_dump_nodes(label, nodes):
     debug(f"{label}: {len(nodes)} node(s)")
     for node in nodes:
@@ -168,7 +175,6 @@ def debug_dump_nodes(label, nodes):
             f"media_name={node['media_name']!r} "
             f"pid={node['pid']!r}"
         )
-
 
 
 def node_matches_terms(node, terms):
@@ -189,14 +195,15 @@ def node_matches_terms(node, terms):
     return False
 
 
-
 def find_nodes(mapping):
     """Find PipeWire streams corresponding to a configured mapping."""
     nodes = get_nodes()
 
     if mapping.get("active_window"):
         window = active_window_info()
-        debug(f"active window pid={window['pid']!r} class={window['class']!r} name={window['name']!r}")
+        debug(
+            f"active window pid={window['pid']!r} class={window['class']!r} name={window['name']!r}"
+        )
 
         pid_matches = [node for node in nodes if node["pid"] == window["pid"]]
 
@@ -205,9 +212,7 @@ def find_nodes(mapping):
             return pid_matches
 
         search_terms = {
-            value.lower()
-            for value in (window["class"], window["name"])
-            if value
+            value.lower() for value in (window["class"], window["name"]) if value
         }
 
         matches = [node for node in nodes if node_matches_terms(node, search_terms)]
@@ -217,7 +222,9 @@ def find_nodes(mapping):
     matches = [value.lower() for value in mapping.get("match", [])]
     found = [node for node in nodes if node_matches_terms(node, matches)]
 
-    if DEBUG_MATCHING and (found or any(term in SPOTIFY_MATCH for term in matches) or DEBUG_EVERY_SYNC):
+    if DEBUG_MATCHING and (
+        found or any(term in SPOTIFY_MATCH for term in matches) or DEBUG_EVERY_SYNC
+    ):
         debug(f"mapping={mapping.get('label', '?')!r} terms={matches}")
         debug_dump_nodes("matching nodes", found)
 
@@ -233,15 +240,12 @@ def find_nodes(mapping):
     return found
 
 
-
 def node_is_muted(node_id):
     return "[MUTED]" in run("wpctl", "get-volume", str(node_id))
 
 
-
 def target_is_muted(target):
     return "[MUTED]" in run("wpctl", "get-volume", target)
-
 
 
 def get_current_volume(node_id):
@@ -261,6 +265,7 @@ def get_current_volume(node_id):
 # KDE OSD
 # =============================================================================
 
+
 def show_text_osd(text, icon="audio-volume-high"):
     command(
         "qdbus6",
@@ -270,7 +275,6 @@ def show_text_osd(text, icon="audio-volume-high"):
         icon,
         text,
     )
-
 
 
 def show_volume_osd(percent, label):
@@ -283,6 +287,7 @@ def show_volume_osd(percent, label):
 # VOLUME
 # =============================================================================
 
+
 def set_volume(node_id, value):
     command(
         "wpctl",
@@ -292,7 +297,6 @@ def set_volume(node_id, value):
         node_id,
         f"{value:.3f}",
     )
-
 
 
 def apply_volume_to_mapping(mapping, percent, force=False):
@@ -313,13 +317,12 @@ def apply_volume_to_mapping(mapping, percent, force=False):
 
         should_apply = force
 
-        if current is None:
-            should_apply = True
-        elif abs(current - percent) > NODE_VOLUME_EPSILON:
-            should_apply = True
-        elif previous is None:
-            should_apply = True
-        elif abs(previous - percent) > NODE_VOLUME_EPSILON:
+        if (
+            current is None
+            or abs(current - percent) > NODE_VOLUME_EPSILON
+            or previous is None
+            or abs(previous - percent) > NODE_VOLUME_EPSILON
+        ):
             should_apply = True
 
         if should_apply:
@@ -341,16 +344,16 @@ def apply_volume_to_mapping(mapping, percent, force=False):
     return applied_nodes
 
 
-
 def prune_stale_node_cache():
     current_ids = {node["id"] for node in get_nodes()}
 
     with STATE_LOCK:
-        stale_ids = [node_id for node_id in LAST_APPLIED_BY_NODE if node_id not in current_ids]
+        stale_ids = [
+            node_id for node_id in LAST_APPLIED_BY_NODE if node_id not in current_ids
+        ]
         for node_id in stale_ids:
             debug(f"drop stale node cache id={node_id}")
             LAST_APPLIED_BY_NODE.pop(node_id, None)
-
 
 
 def sync_tracked_app_volumes():
@@ -371,7 +374,6 @@ def sync_tracked_app_volumes():
         apply_volume_to_mapping(mapping, percent)
 
 
-
 def sync_worker():
     debug("background sync thread started")
     while not STOP_EVENT.wait(APP_VOLUME_SYNC_INTERVAL):
@@ -380,7 +382,6 @@ def sync_worker():
         except Exception as exc:
             debug(f"background sync error: {exc}")
     debug("background sync thread stopped")
-
 
 
 def handle_volume(cc, value):
@@ -399,7 +400,9 @@ def handle_volume(cc, value):
     with STATE_LOCK:
         LAST_VOLUME_BY_CC[cc] = percent
 
-    debug(f"midi volume cc={cc} label={mapping['label']} raw={value} percent={percent:.3f}")
+    debug(
+        f"midi volume cc={cc} label={mapping['label']} raw={value} percent={percent:.3f}"
+    )
 
     if mapping.get("default_sink"):
         set_volume("@DEFAULT_SINK@", percent)
@@ -427,6 +430,7 @@ def handle_volume(cc, value):
 # AUDIO OUTPUT SWITCHING
 # =============================================================================
 
+
 def current_default_sink():
     for line in run("pactl", "info").splitlines():
         if line.startswith("Default Sink:"):
@@ -434,37 +438,66 @@ def current_default_sink():
     return ""
 
 
-
-def speakers_are_selected():
-    return current_default_sink() == OUTPUTS["enceintes"]
-
+def sink_exists(sink_name):
+    """Return True when the PipeWire/PulseAudio sink is currently available."""
+    return any(
+        line.split(maxsplit=2)[1] == sink_name
+        for line in run("pactl", "list", "short", "sinks").splitlines()
+        if len(line.split()) >= 2
+    )
 
 
 def toggle_output():
+    """Cycle through available configured outputs and move playing streams."""
     current = current_default_sink()
 
-    if current == OUTPUTS["casque"]:
-        target = OUTPUTS["enceintes"]
-        label = "Enceintes"
-    else:
-        target = OUTPUTS["casque"]
-        label = "Casque"
+    try:
+        current_key = next(
+            key for key, sink_name in OUTPUTS.items() if sink_name == current
+        )
+        start_index = OUTPUT_ORDER.index(current_key)
+    except (StopIteration, ValueError):
+        start_index = -1
+
+    target_key = None
+
+    # Search for the next output that actually exists.
+    for offset in range(1, len(OUTPUT_ORDER) + 1):
+        candidate_key = OUTPUT_ORDER[(start_index + offset) % len(OUTPUT_ORDER)]
+        candidate_sink = OUTPUTS[candidate_key]
+
+        if sink_exists(candidate_sink):
+            target_key = candidate_key
+            break
+
+    if target_key is None:
+        show_text_osd("Aucune sortie audio disponible", "audio-volume-muted")
+        print("Aucune sortie audio configurée n'est disponible")
+        return None
+
+    target = OUTPUTS[target_key]
+    label = OUTPUT_LABELS[target_key]
 
     command("pactl", "set-default-sink", target)
 
+    # Move streams already playing to the selected output.
     for line in run("pactl", "list", "short", "sink-inputs").splitlines():
         parts = line.split()
+
         if parts:
             command("pactl", "move-sink-input", parts[0], target)
 
-    show_text_osd(f"Sortie active : {label}", "audio-headphones")
+    icon = "audio-headphones" if target_key == "casque" else "audio-volume-high"
+    show_text_osd(f"Sortie active : {label}", icon)
     print(f"Sortie active : {label}")
-    return target == OUTPUTS["enceintes"]
+
+    return target_key
 
 
 # =============================================================================
 # X-TOUCH MINI BUTTON LEDS
 # =============================================================================
+
 
 def set_button_led(midi_out, note, state):
     if not 0 <= note <= 15:
@@ -484,7 +517,6 @@ def set_button_led(midi_out, note, state):
     )
 
 
-
 def button_label(button):
     if button["action"] == "mute_active_window":
         window = active_window_info()
@@ -492,10 +524,8 @@ def button_label(button):
     return button["label"]
 
 
-
 def update_button_led_for_mute(midi_out, note, muted):
     set_button_led(midi_out, note, LED_ON if muted else LED_OFF)
-
 
 
 def sync_button_leds(midi_out):
@@ -524,7 +554,6 @@ def sync_button_leds(midi_out):
         set_button_led(midi_out, note, LED_ON if muted else LED_OFF)
 
 
-
 def test_button_leds(midi_out):
     print("Test des LED...")
 
@@ -542,6 +571,7 @@ def test_button_leds(midi_out):
 # BUTTON ACTIONS
 # =============================================================================
 
+
 def handle_button(note, midi_out):
     button = BUTTONS.get(note)
 
@@ -553,7 +583,7 @@ def handle_button(note, midi_out):
     if action == "toggle_output":
         toggle_output()
         return
-    
+
     if action == "spotify_previous":
         command("playerctl", "--player=spotify", "previous")
         show_text_osd("Spotify : piste précédente", "media-skip-backward")
@@ -613,16 +643,12 @@ def handle_button(note, midi_out):
 # MIDI
 # =============================================================================
 
+
 def matching_port(ports):
     return next(
-        (
-            port
-            for port in ports
-            if MIDI_PORT_MATCH.lower() in port.lower()
-        ),
+        (port for port in ports if MIDI_PORT_MATCH.lower() in port.lower()),
         None,
     )
-
 
 
 def main():
@@ -670,7 +696,9 @@ def main():
         sync_button_leds(midi_out)
         worker.start()
 
-        print("Tourne un knob, bouge le fader ou appuie sur un bouton. Ctrl+C pour arrêter.")
+        print(
+            "Tourne un knob, bouge le fader ou appuie sur un bouton. Ctrl+C pour arrêter."
+        )
 
         try:
             for message in midi:
