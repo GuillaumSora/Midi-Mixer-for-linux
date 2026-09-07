@@ -39,7 +39,7 @@ LAYER_A_KNOB_CHANNEL = 10
 OUTPUTS = {
     "casque": "alsa_output.usb-Logitech_PRO_X_000000000000-00.analog-stereo",
     "enceintes": "alsa_output.pci-0000_12_00.6.analog-stereo",
-    "dac": "alsa_output.usb-FIIO_JadeAudio_JA11-00.analog-stereo",
+    "dac": "alsa_output.usb-FIIO_JadeAudio_JA11_2020-02-20-0000-0000-0000-00.analog-stereo",
 }
 
 OUTPUT_ORDER = ["casque", "enceintes", "dac"]
