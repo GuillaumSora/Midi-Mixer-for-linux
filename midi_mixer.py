@@ -33,7 +33,7 @@ LED_CHANNEL = 10
 # This MUST be the channel emitted by your Layer A knobs in X-Touch Editor.
 # Run the script with --print-midi, turn a Layer A knob, then use the displayed
 # `channel` value here. It is 10 if the editor shows MIDI CH 11.
-LAYER_A_KNOB_CHANNEL = 10
+MIDI_CHANNEL = 10
 
 # Exact sink names from: pactl list short sinks
 OUTPUTS = {
@@ -49,75 +49,152 @@ OUTPUT_LABELS = {
     "dac": "DAC",
 }
 
+FEISHIN_MATCH = ["Feishin"]
 SPOTIFY_MATCH = ["spotify", "spotify-launcher"]
 
 # Button MIDI notes.
+# La clé est maintenant : (canal_mido, note_midi)
 BUTTONS = {
-    8: {"label": "Spotify", "action": "mute_app", "match": SPOTIFY_MATCH},
-    9: {"label": "Discord", "action": "mute_app", "match": ["discord"]},
-    10: {"label": "Firefox", "action": "mute_app", "match": ["firefox"]},
-    11: {"label": "Steam", "action": "mute_app", "match": ["steam"]},
-    12: {"label": "VLC", "action": "mute_app", "match": ["vlc"]},
-    14: {"label": "Fenêtre active", "action": "mute_active_window"},
-    15: {"label": "Général", "action": "mute_default_sink"},
+    # -------------------------------------------------------------------------
+    # Layer A : Feishin + mixeur habituel
+    # -------------------------------------------------------------------------
+    (MIDI_CHANNEL, 8): {
+        "label": "Feishin",
+        "action": "mute_app",
+        "match": FEISHIN_MATCH,
+    },
+    (MIDI_CHANNEL, 9): {
+        "label": "Discord",
+        "action": "mute_app",
+        "match": ["discord"],
+    },
+    (MIDI_CHANNEL, 10): {
+        "label": "Firefox",
+        "action": "mute_app",
+        "match": ["firefox"],
+    },
+    (MIDI_CHANNEL, 11): {
+        "label": "Steam",
+        "action": "mute_app",
+        "match": ["steam"],
+    },
+    (MIDI_CHANNEL, 12): {
+        "label": "VLC",
+        "action": "mute_app",
+        "match": ["vlc"],
+    },
+    (MIDI_CHANNEL, 14): {
+        "label": "Fenêtre active",
+        "action": "mute_active_window",
+    },
+    (MIDI_CHANNEL, 15): {
+        "label": "Général",
+        "action": "mute_default_sink",
+    },
+    (MIDI_CHANNEL, 16): {
+        "label": "Switch casque / enceintes / DAC",
+        "action": "toggle_output",
+    },
 
-    # Note 16 and above have no controllable Standard-mode button LED.
-    16: {"label": "Switch casque / enceintes / DAC", "action": "toggle_output"},
-    18: {"label": "Spotify previous", "action": "spotify_previous"},
-    19: {"label": "Spotify next", "action": "spotify_next"},
-    22: {"label": "Spotify play/pause", "action": "spotify_play_pause"},
+    (MIDI_CHANNEL, 18): {
+        "label": "Feishin : piste précédente",
+        "action": "player_previous",
+        "player": "Feishin",
+    },
+    (MIDI_CHANNEL, 19): {
+        "label": "Feishin : piste suivante",
+        "action": "player_next",
+        "player": "Feishin",
+    },
+    (MIDI_CHANNEL, 22): {
+        "label": "Feishin : lecture / pause",
+        "action": "player_play_pause",
+        "player": "Feishin",
+    },
+
+    # -------------------------------------------------------------------------
+    # Layer B : Spotify
+    # -------------------------------------------------------------------------
+    (MIDI_CHANNEL, 32): {
+        "label": "Spotify",
+        "action": "mute_app",
+        "match": SPOTIFY_MATCH,
+    },
+
+    (MIDI_CHANNEL, 42): {
+        "label": "Spotify : piste précédente",
+        "action": "player_previous",
+        "player": "spotify",
+    },
+    (MIDI_CHANNEL, 43): {
+        "label": "Spotify : piste suivante",
+        "action": "player_next",
+        "player": "spotify",
+    },
+    (MIDI_CHANNEL, 46): {
+        "label": "Spotify : lecture / pause",
+        "action": "player_play_pause",
+        "player": "spotify",
+    },
 }
 
-# Knob / fader MIDI CC mappings.
-# default_volume values are between 0.0 and 1.0.
-# midi_channel is intentionally explicit: it targets your Layer A encoder rings.
 MAPPINGS = {
-    1: {
-        "label": "Spotify",
-        "match": SPOTIFY_MATCH,
+    # Layer A : Feishin
+    (10, 1): {
+        "label": "Feishin",
+        "match": FEISHIN_MATCH,
         "default_volume": 0.30,
-        "midi_channel": LAYER_A_KNOB_CHANNEL,
+        "midi_channel": 10,
     },
-    2: {
+
+    (10, 2): {
         "label": "Discord",
         "match": ["discord"],
         "default_volume": 0.50,
-        "midi_channel": LAYER_A_KNOB_CHANNEL,
+        "midi_channel": 10,
     },
-    3: {
+    (10, 3): {
         "label": "Firefox",
         "match": ["firefox"],
         "default_volume": 0.50,
-        "midi_channel": LAYER_A_KNOB_CHANNEL,
+        "midi_channel": 10,
     },
-    4: {
+    (10, 4): {
         "label": "Steam",
         "match": ["steam"],
         "default_volume": 0.50,
-        "midi_channel": LAYER_A_KNOB_CHANNEL,
+        "midi_channel": 10,
     },
-    5: {
+    (10, 5): {
         "label": "VLC",
         "match": ["vlc"],
         "default_volume": 0.50,
-        "midi_channel": LAYER_A_KNOB_CHANNEL,
+        "midi_channel": 10,
     },
-    7: {
+
+    # Layer B : Spotify
+    (10, 11): {
+        "label": "Spotify",
+        "match": SPOTIFY_MATCH,
+        "default_volume": 0.30,
+        "midi_channel": 10,
+    },
+
+    (10, 7): {
         "label": "Fenêtre active",
         "active_window": True,
-        "midi_channel": LAYER_A_KNOB_CHANNEL,
+        "midi_channel": 10,
     },
-    8: {
+    (10, 8): {
         "label": "Volume général",
         "default_sink": True,
         "default_volume": 0.50,
-        "midi_channel": LAYER_A_KNOB_CHANNEL,
+        "midi_channel": 10,
     },
-    # CC 9 is a fader, not an encoder LED ring.
-    9: {
+    (10, 9): {
         "label": "Fenêtre active (fader)",
         "active_window": True,
-        "midi_channel": LAYER_A_KNOB_CHANNEL,
+        "midi_channel": 10,
     },
 }
 
@@ -325,7 +402,7 @@ def set_knob_led(midi_out, control_cc, percent, midi_channel):
     the same CC that the configured physical encoder emits. For example, Layer
     A knob CC 1 receives CC 1 back on its Layer A MIDI channel.
     """
-    if not 1 <= control_cc <= 8:
+    if not 0 <= control_cc <= 127:
         return
 
     percent = max(0.0, min(1.0, percent))
@@ -354,19 +431,25 @@ def test_button_leds(midi_out):
             set_button_led(midi_out, note, LED_OFF)
     print("Test terminé.")
 
-
 def test_knob_leds(midi_out):
-    """Test the Layer A knob feedback path at 0%, 50%, then 100%."""
-    print("Test des anneaux LED Layer A...")
-    for cc, mapping in MAPPINGS.items():
-        if not 1 <= cc <= 8:
+    """Teste les anneaux LED de tous les knobs configurés."""
+    print("Test des anneaux LED...")
+
+    for (midi_channel, cc), mapping in MAPPINGS.items():
+        if not 0 <= cc <= 127:
             continue
 
-        channel = mapping["midi_channel"]
-        print(f"Test knob CC {cc}, canal Mido {channel}")
+        print(f"Test knob CC {cc}, canal Mido {midi_channel}")
+
         for percent in (0.0, 0.5, 1.0):
-            set_knob_led(midi_out, cc, percent, channel)
+            set_knob_led(
+                midi_out,
+                cc,
+                percent,
+                mapping["midi_channel"],
+            )
             time.sleep(2)
+
     print("Test terminé.")
 
 
@@ -377,30 +460,41 @@ def button_label(button):
     return button["label"]
 
 
-def sync_button_leds(midi_out):
-    """Synchronize only mute-related button LEDs."""
+def sync_button_leds(midi_out, active_channel=MIDI_CHANNEL):
+    """Synchronise les LED de mute du layer MIDI actuellement utilisé."""
     ignored = {
         "toggle_output",
-        "spotify_previous",
-        "spotify_play_pause",
-        "spotify_next",
+        "player_previous",
+        "player_play_pause",
+        "player_next",
     }
 
-    for note, button in BUTTONS.items():
+    for (button_channel, note), button in BUTTONS.items():
+        if button_channel != active_channel:
+            continue
+
         action = button["action"]
+
         if action in ignored:
             continue
 
         if action == "mute_default_sink":
             muted = target_is_muted("@DEFAULT_SINK@")
+
         elif action == "mute_default_source":
             muted = target_is_muted("@DEFAULT_SOURCE@")
+
         elif action == "mute_active_window":
             nodes = find_nodes({"active_window": True})
-            muted = bool(nodes) and all(node_is_muted(node["id"]) for node in nodes)
+            muted = bool(nodes) and all(
+                node_is_muted(node["id"]) for node in nodes
+            )
+
         else:
             nodes = find_nodes(button)
-            muted = bool(nodes) and all(node_is_muted(node["id"]) for node in nodes)
+            muted = bool(nodes) and all(
+                node_is_muted(node["id"]) for node in nodes
+            )
 
         set_button_led(midi_out, note, LED_ON if muted else LED_OFF)
 
@@ -445,17 +539,24 @@ def apply_volume_to_mapping(mapping, percent, force=False):
 
 
 def apply_default_volumes(midi_out):
-    """Apply volume defaults and synchronize Layer A knob-ring positions."""
-    for cc, mapping in MAPPINGS.items():
+    """Applique les volumes par défaut et synchronise les anneaux LED."""
+    for (midi_channel, cc), mapping in MAPPINGS.items():
         default = mapping.get("default_volume")
+
         if default is None:
             continue
 
         default = max(0.0, min(MAX_VOLUME, float(default)))
-        set_knob_led(midi_out, cc, default, mapping["midi_channel"])
+
+        set_knob_led(
+            midi_out,
+            cc,
+            default,
+            mapping["midi_channel"],
+        )
 
         with STATE_LOCK:
-            LAST_VOLUME_BY_CC[cc] = default
+            LAST_VOLUME_BY_CC[(midi_channel, cc)] = default
 
         if mapping.get("default_sink"):
             set_volume("@DEFAULT_SINK@", default)
@@ -466,6 +567,7 @@ def apply_default_volumes(midi_out):
             continue
 
         nodes = apply_volume_to_mapping(mapping, default, force=True)
+
         if nodes:
             print(
                 f"Volume par défaut {mapping['label']} : "
@@ -482,19 +584,26 @@ def prune_stale_node_cache():
 
 
 def sync_tracked_app_volumes():
-    """Reapply defaults/last knob values when an app recreates or resets a stream."""
+    """Réapplique le dernier volume demandé à chaque application suivie."""
     prune_stale_node_cache()
 
     with STATE_LOCK:
         targets = {
-            cc: LAST_VOLUME_BY_CC.get(cc, mapping.get("default_volume"))
-            for cc, mapping in MAPPINGS.items()
-            if not mapping.get("default_sink") and not mapping.get("active_window")
+            mapping_key: LAST_VOLUME_BY_CC.get(
+                mapping_key,
+                mapping.get("default_volume"),
+            )
+            for mapping_key, mapping in MAPPINGS.items()
+            if not mapping.get("default_sink")
+            and not mapping.get("active_window")
         }
 
-    for cc, target in targets.items():
+    for mapping_key, target in targets.items():
         if target is not None:
-            apply_volume_to_mapping(MAPPINGS[cc], target)
+            apply_volume_to_mapping(
+                MAPPINGS[mapping_key],
+                target,
+            )
 
 
 def sync_worker():
@@ -506,7 +615,9 @@ def sync_worker():
 
 
 def handle_volume(cc, value, midi_out, midi_channel):
-    mapping = MAPPINGS.get(cc)
+    mapping_key = (midi_channel, cc)
+    mapping = MAPPINGS.get(mapping_key)
+
     if not mapping:
         return
 
@@ -517,11 +628,10 @@ def handle_volume(cc, value, midi_out, midi_channel):
     else:
         percent = value / 127 * MAX_VOLUME
 
-    # Echo feedback using the actual channel emitted by the active layer.
     set_knob_led(midi_out, cc, percent, midi_channel)
 
     with STATE_LOCK:
-        LAST_VOLUME_BY_CC[cc] = percent
+        LAST_VOLUME_BY_CC[mapping_key] = percent
 
     if mapping.get("default_sink"):
         set_volume("@DEFAULT_SINK@", percent)
@@ -530,17 +640,16 @@ def handle_volume(cc, value, midi_out, midi_channel):
         return
 
     nodes = apply_volume_to_mapping(mapping, percent, force=True)
+
     if not nodes:
         print(f"{mapping['label']} : aucun flux audio trouvé")
         return
 
-    label = mapping["label"]
-    if mapping.get("active_window"):
-        window = active_window_info()
-        label = window["name"] or window["class"] or "Fenêtre active"
-
-    show_volume_osd(percent, label)
-    print(f"{label} : {round(percent * 100)} % ({len(nodes)} flux)")
+    show_volume_osd(percent, mapping["label"])
+    print(
+        f"{mapping['label']} : "
+        f"{round(percent * 100)} % ({len(nodes)} flux)"
+    )
 
 
 # =============================================================================
@@ -605,25 +714,46 @@ def toggle_output():
 # BUTTON ACTIONS
 # =============================================================================
 
-def spotify_transport(action):
+def player_transport(button):
     actions = {
-        "spotify_previous": ("previous", "Spotify : piste précédente", "media-skip-backward"),
-        "spotify_play_pause": ("play-pause", "Spotify : lecture / pause", "media-playback-pause"),
-        "spotify_next": ("next", "Spotify : piste suivante", "media-skip-forward"),
+        "player_previous": (
+            "previous",
+            button["label"],
+            "media-skip-backward",
+        ),
+        "player_play_pause": (
+            "play-pause",
+            button["label"],
+            "media-playback-pause",
+        ),
+        "player_next": (
+            "next",
+            button["label"],
+            "media-skip-forward",
+        ),
     }
-    playerctl_action, text, icon = actions[action]
 
-    if command("playerctl", "--player=spotify", playerctl_action) != 0:
-        show_text_osd("Spotify indisponible", "audio-volume-muted")
-        print("Spotify indisponible via playerctl")
+    playerctl_action, text, icon = actions[button["action"]]
+
+    if command(
+        "playerctl",
+        f"--player={button['player']}",
+        playerctl_action,
+    ) != 0:
+        player = button["player"]
+        show_text_osd(
+            f"{player} indisponible",
+            "audio-volume-muted",
+        )
+        print(f"{player} indisponible via playerctl")
         return
 
     show_text_osd(text, icon)
     print(text)
 
 
-def handle_button(note, midi_out):
-    button = BUTTONS.get(note)
+def handle_button(note, midi_out, midi_channel):
+    button = BUTTONS.get((midi_channel, note))
     if not button:
         return
 
@@ -633,8 +763,8 @@ def handle_button(note, midi_out):
         toggle_output()
         return
 
-    if action in {"spotify_previous", "spotify_play_pause", "spotify_next"}:
-        spotify_transport(action)
+    if action in {"player_previous", "player_play_pause", "player_next"}:
+        player_transport(button)
         return
 
     if action == "mute_default_sink":
@@ -642,17 +772,20 @@ def handle_button(note, midi_out):
         time.sleep(0.08)
         muted = target_is_muted("@DEFAULT_SINK@")
         label = button["label"]
+
     elif action == "mute_default_source":
         command("wpctl", "set-mute", "@DEFAULT_SOURCE@", "toggle")
         time.sleep(0.08)
         muted = target_is_muted("@DEFAULT_SOURCE@")
         label = button["label"]
+
     else:
         nodes = (
             find_nodes({"active_window": True})
             if action == "mute_active_window"
             else find_nodes(button)
         )
+
         if not nodes:
             print(f"{button['label']} : aucun flux audio trouvé")
             return
@@ -665,6 +798,7 @@ def handle_button(note, midi_out):
         label = button_label(button)
 
     set_button_led(midi_out, note, LED_ON if muted else LED_OFF)
+
     state = "Mute" if muted else "Unmute"
     icon = "audio-volume-muted" if muted else "audio-volume-high"
     show_text_osd(f"{label} : {state}", icon)
@@ -731,9 +865,9 @@ def main():
                     print(message)
 
                 if message.type == "note_on" and message.velocity > 0:
-                    handle_button(message.note, midi_out)
+                    handle_button(message.note, midi_out, message.channel)
                     time.sleep(0.12)
-                    sync_button_leds(midi_out)
+                    sync_button_leds(midi_out, message.channel)
                     continue
 
                 if message.type != "control_change":
