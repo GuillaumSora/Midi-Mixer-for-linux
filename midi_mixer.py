@@ -97,19 +97,19 @@ BUTTONS = {
     },
 
     (MIDI_CHANNEL, 18): {
-        "label": "Feishin : piste précédente",
+        "label": "Spotify : piste précédente",
         "action": "player_previous",
-        "player": "Feishin",
+        "player": "spotify",
     },
     (MIDI_CHANNEL, 19): {
-        "label": "Feishin : piste suivante",
+        "label": "Spotify : piste suivante",
         "action": "player_next",
-        "player": "Feishin",
+        "player": "spotify",
     },
     (MIDI_CHANNEL, 22): {
-        "label": "Feishin : lecture / pause",
+        "label": "Spotify : lecture / pause",
         "action": "player_play_pause",
-        "player": "Feishin",
+        "player": "spotify",
     },
 
     # -------------------------------------------------------------------------
@@ -122,28 +122,28 @@ BUTTONS = {
     },
 
     (MIDI_CHANNEL, 42): {
-        "label": "Spotify : piste précédente",
+        "label": "Feishin : piste précédente",
         "action": "player_previous",
-        "player": "spotify",
+        "player": "Feishin",
     },
     (MIDI_CHANNEL, 43): {
-        "label": "Spotify : piste suivante",
+        "label": "Feishin : piste suivante",
         "action": "player_next",
-        "player": "spotify",
+        "player": "Feishin",
     },
     (MIDI_CHANNEL, 46): {
-        "label": "Spotify : lecture / pause",
+        "label": "Feishin : lecture / pause",
         "action": "player_play_pause",
-        "player": "spotify",
+        "player": "Feishin",
     },
 }
 
 MAPPINGS = {
-    # Layer A : Feishin
+    # Layer A : Spotify
     (10, 1): {
-        "label": "Feishin",
-        "match": FEISHIN_MATCH,
-        "default_volume": 0.30,
+        "label": "Spotify",
+        "match": SPOTIFY_MATCH,
+        "default_volume": 0.25~,
         "midi_channel": 10,
     },
 
@@ -172,11 +172,11 @@ MAPPINGS = {
         "midi_channel": 10,
     },
 
-    # Layer B : Spotify
+    # Layer B : Feishin
     (10, 11): {
-        "label": "Spotify",
-        "match": SPOTIFY_MATCH,
-        "default_volume": 0.30,
+        "label": "Feishin",
+        "match": FEISHIN_MATCH,
+        "default_volume": 0.25,
         "midi_channel": 10,
     },
 
