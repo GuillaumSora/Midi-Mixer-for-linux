@@ -143,7 +143,7 @@ MAPPINGS = {
     (10, 1): {
         "label": "Spotify",
         "match": SPOTIFY_MATCH,
-        "default_volume": 0.25~,
+        "default_volume": 0.25,
         "midi_channel": 10,
     },
 
