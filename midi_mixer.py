@@ -59,9 +59,9 @@ BUTTONS = {
     # Layer A : Feishin + mixeur habituel
     # -------------------------------------------------------------------------
     (MIDI_CHANNEL, 8): {
-        "label": "Feishin",
+        "label": "Spotify",
         "action": "mute_app",
-        "match": FEISHIN_MATCH,
+        "match": SPOTIFY_MATCH,
     },
     (MIDI_CHANNEL, 9): {
         "label": "Discord",
@@ -116,9 +116,9 @@ BUTTONS = {
     # Layer B : Spotify
     # -------------------------------------------------------------------------
     (MIDI_CHANNEL, 32): {
-        "label": "Spotify",
+        "label": "Feishin",
         "action": "mute_app",
-        "match": SPOTIFY_MATCH,
+        "match": FEISHIN_MATCH,
     },
 
     (MIDI_CHANNEL, 42): {
